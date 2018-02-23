@@ -221,73 +221,325 @@ Spittr应用有两个基本的领域概念：Spitter(应用的用户)和Spittle(
 
 ## 5.2 编写 基本的控制器
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
--
+在SpringMVC中，控制器只是在方法上添加了@RequestMapping注解的类，这个注解声明了他们所要处理的请求。
+
+开始的时候，我们尽可能简单，假设控制器类要处理对/的请求，并对渲染应用的首页。
+
+```java
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+
+/**
+ * Created by guo on 24/2/2018.
+ * 首页控制器
+ */
+@Controller
+public class HomeController {
+    @RequestMapping(value = "/",method = RequestMethod.GET)           //处理对“/”的Get请求
+    public String home() {
+        return "home";                                                //视图名为home
+    }
+}
+```
+**写完测试了下，好使，**
+
+![](https://i.imgur.com/zxY3mlt.jpg)
+
+你可能注意到第一件事就是HomeController带有@Controller注解，很显然这个注解是用来声明控制器的，但实际上这个注解对Spirng MVC 本身影响不大。
+
+@Controller是一个构造型(stereotype)的注解。它基于@Component注解。在这里，它的目的就是辅助实现组件扫描。因为homeController带有@Controller注解，因此组件扫描器会自动去找到HomeController，并将其声明为Spring应用上下文中的bean。
+```java
+Target({ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Component
+public @interface Controller {
+	String value() default "";
+}
+```
+其实你可以让HomeController带有@Component注解，它所实现的效果是一样的。但是在表意性上可能差一些，无法确定HomeController是什么组件类型。
+
+HomeController唯一的一个方法，也就是Home方法，带有@RequestMapping注解，他的Value属性指定了这个方法所要处理的请求路径，method属性细化了它所能处理的HTTP方法，在本例中，当收到对‘/’的HTTP GET请求时，就会调用home方法。
+
+home()方法其实并没有做太多的事情，它返回一个String类型的“home”，这个String将会被Spring MVC 解读为要渲染的视图名称。DispatcherServlet会要求视图解析器将这个逻辑名称解析为实际的视图。
+
+鉴于我们配置`InternalResourceViewResolver`的方式，视图名“home”将会被解析为“/WEB-INF/views/home.jsp”
+
+Spittr应用的首页，定义为一个简单的JSP
+```xml
+<%@ taglib uri="http://java.sun.com/jsp/jstl/core" prefix="c" %>
+<%@ page session="false" %>
+<html>
+  <head>
+    <title>Spitter</title>
+    <link rel="stylesheet"
+          type="text/css"
+          href="<c:url value="/resources/style.css" />" >
+  </head>
+  <body>
+    <h1>Welcome to Spitter</h1>
+    <a href="<c:url value="/spittles" />">Spittles</a> |
+    <a href="<c:url value="/spitter/register" />">Register</a>
+  </body>
+</html>
+```
+
+**测试控制器最直接的办法可能是构建并部署应用，然后通过浏览器对其进行访问，但是自动化测试可能会给你更快的反馈和更一致的独立结果，所以，让我们编写一个针对HomeController的测试**
+
+
+### 5.2.1 测试控制器
+
+编写一个简单的类来测试HomoController。
+```java
+import static org.junit.Assert.*;
+import org.junit.Test;
+
+public class HomeControllerTest {
+    @Test
+    public void testHomePage() throws Exception {
+        HomeController controller = new HomeController();
+        assertEquals("home",controller.home());
+    }
+}
+```
+
+在测试中会直接调用home()方法，并断言返回包含 "home"值的String类型。它完全没有站在Spring MVC控制器的视角进行测试。这个测试没有断言当接收到针对“/”的GET请求时会调用home()方法。因为它返回的值就是“home”，所以没有真正判断home是试图的名称。
+
+不过从Spring 3.2开始，我们可以按照控制器的方式进行测试Spring MVC中的控制器了。而不仅仅是POJO进行测试。Spring现在包含了一种mock Spirng MVC 并针对控制器执行 HTTP请求的机制。这样的话，在测试控制器的时候，就没有必要在启动Web服务器和Web浏览器了。
+
+
+为了阐述如何测试Spirng MVC 容器，我们重写了HomeControllerTest并使用Spring MVC 中新的测试特性。
+
+```java
+import org.junit.Test;
+import org.springframework.test.web.servlet.MockMvc;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+/**
+ * Created by guo on 24/2/2018.
+ */
+public class HomeControllerTest1  {
+    @Test                                                             //大家在测试的时候注意静态导入的方法
+    public void testHomePage() throws Exception {
+        HomeController controller = new HomeController();
+        MockMvc mockMvc =  standaloneSetup(controller).build();       //搭建MockMvc
+       mockMvc.perform(get("/"))                                      //对“/”执行GET请求，
+               .andExpect(view().name("home"));                       //预期得到home视图
+    }
+}
+```
+
+这次我们不是直接调用home方法并测试它的返回值，而是发起了对"/"的请求，并断言结果视图的名称为home，它首先传递一个HomeController实例到MockMvcBuilders.strandaloneSetup()并调用build()来构建MockMvc实例，然后它使用MockMvc实例执行针对“/”的GET请求，并设置 期望得到的视图名称。
+
+### 5.2.2 定义类级别的请求处理。
+
+现在，已经为HomeController编写了测试，那么我们可以做一些重构。并通过测试来保证不会对功能造成什么破坏。我们可以做的就是拆分@RequestMapping，并将其路径映射部分放到类级别上
+
+```java
+@Controller
+@RequestMapping("/")
+public class HomeController {
+    @RequestMapping(method = RequestMethod.GET)           //处理对“/”的Get请求
+    public String home() {
+        return "home";                                    //视图名为home
+    }
+}
+```
+
+在这个新版本的HomeController中，路径被转移到类级别的@RequestMapping上，而HTTP方法依然映射在方法级别上。当控制器在类级别上添加@RequestMapping注解时，这个注解会应用到控制器的所有处理器方法上，处理器方法上的@RequestMapping注解会对类级别上的@RequestMapping的声明进行补充。
+
+就HomeController而言，这里只有一个控制器方法，与类级别的@RequestMapping合并之后，这个方法的@RequestMapping表明home()将会处理对 “/”路径的GET请求。
+
+有了测试，所以可以确保在这个过程中，没有对原有的功能造成破坏。
+
+当我们修改@RequestMapping时，还可以对HomeController做另一个变更。@RequestMapping的value接受一个String类型的数组。到目前为止，我们给它设置的都是一个String类型的‘/’。但是，我们还可以将它映射到对“/Homepage”的请求，只需要将类级别的@RequestMapping改动下
+
+```java
+@Controller
+@RequestMapping({"/","/Homepage"})
+public class HomeController {
+  ...
+}
+```
+现在，HomeController的home()方法可以被映射到对“/”和“/homepage”的GET请求上。
+
+### 5.2.3 传递模型数据到视图中
+
+到目前为止，就编写超级简单的控制器来说，HomeController已经是一个不错的样例了，但是大多数的控制器并不是那么简单。在Spring应用中，我们需要有一个页面展示最近提交的Spittle列表。因此，我们需要有一个新的方法来处理这个页面。
+
+首先需要定义一个数据访问的Repository，为了实现解耦以及避免陷入数据库访问的细节中，我们将Repository定义为一个接口，并在稍后实现它(第十章)，此时，我们只需要一个能够获取Spittle列表的Repository，
+```java
+package com.guo.spittr.data;
+import com.guo.spittr.Spittle;
+import java.util.List;
+/**
+ * Created by guo on 24/2/2018.
+ */
+public interface SpittleRepository {
+    List<Spittle> finfSpittles(long max, int count);
+}
+```
+findSpittles()方法接受两个参数，其中max参数代表所返回的Spittle中，Spittle ID属性的最大值，而count参数表明要返回多少个Spittle对象，为了获得最新的20个Spittle对象，我们可以这样调用方法。
+
+```java
+List<Spittle> recent = SpittleRepository.findSpittles(long.MAX_VALUE(),20)
+```
+
+它的属性包括消息内容，时间戳，以及Spittle发布时对应的经纬度。
+
+```java
+public class Spittle {
+
+  private final Long id;
+  private final String message;
+  private final Date time;
+  private Double latitude;
+  private Double longitude;
+
+  public Spittle(String message, Date time) {
+    this(null, message, time, null, null);
+  }
+
+  public Spittle(Long id, String message, Date time, Double longitude, Double latitude) {
+    this.id = id;
+    this.message = message;
+    this.time = time;
+    this.longitude = longitude;
+    this.latitude = latitude;
+  }
+
+  //Getter和Setter略
+
+  @Override
+public boolean equals(Object that) {
+  return EqualsBuilder.reflectionEquals(this, that, "id", "time");
+}
+
+@Override
+public int hashCode() {
+  return HashCodeBuilder.reflectionHashCode(this, "id", "time");
+}
+```
+
+需要注意的是，我们使用Apache Common Lang包来实现equals()和hashCode()方法，这些方法除了常规的作用以外，当我们为控制器的处理器方法编写测试时，它们也是有用的。
+
+既然我们说到了测试，那么我们继续讨论这个话题，并为新的控制器方法编写测试，
+
+```java
+@Test
+ public void houldShowRecentSpittles() throws Exception {
+   List<Spittle> expectedSpittles = createSpittleList(20);
+   SpittleRepository mockRepository = mock(SpittleRepository.class);
+   when(mockRepository.findSpittles(Long.MAX_VALUE, 20))
+       .thenReturn(expectedSpittles);
+
+   SpittleController controller = new SpittleController(mockRepository);
+   MockMvc mockMvc = standaloneSetup(controller)
+       .setSingleView(new InternalResourceView("/WEB-INF/views/spittles.jsp"))
+       .build();
+
+   mockMvc.perform(get("/spittles"))
+      .andExpect(view().name("spittles"))
+      .andExpect(model().attributeExists("spittleList"))
+      .andExpect(model().attribute("spittleList",
+                 hasItems(expectedSpittles.toArray())));
+ }
+/.................佩服老外，测试代码一大堆，省略了好多，好好研究下，..................../
+ private List<Spittle> createSpittleList(int count) {
+   List<Spittle> spittles = new ArrayList<Spittle>();
+   for (int i=0; i < count; i++) {
+     spittles.add(new Spittle("Spittle " + i, new Date()));
+   }
+   return spittles;
+ }
+}
+```
+测试首先会创建SpittleRepository接口的mock实现，这个实现会从他的findSpittles()方法中返回20个Spittle对象，然后将这个Repository注入到一个新的SpittleController实例中，然后创建MockMvc并使用这个控制器。
+
+需要注意的是这个测试在MockMvc构造器上调用了setSingleView().这样的话，mock框架就不用解析控制器中的视图名了。在很多场景中，其实没必要这么做，但是对于这个控制器方法，视图和请求路径非常相似，这样按照默认的驶入解析规则，MockMvc就会发生失败，因为无法区分视图路径和控制器的路径，在这个测试中，构建InternalResourceViewResolver时所设置的路径是无关紧要的，但我们将其设置为`InternalResourceViewResolver`一致。
+
+这个测试对“/spittles”发起Get请求，然后断言视图的名称为spittles并且模型中包含名为spittleList的属性，在spittleList中包含预期的内容。
+
+当然如果此时运行测试的话，它将会失败。他不是运行失败，而是编译的时候就失败，这是因为我们还没编写SpittleController。
+
+
+```java
+@Controller
+@RequestMapping("/spittles")
+public class SpittleController {
+    private SpittleRepository spittleRepository;
+
+    @Autowired
+    public  SpittleController(SpittleRepository spittleRepository) {              //注入SpittleRepository
+        this.spittleRepository = spittleRepository;
+    }
+    @RequestMapping(method = RequestMethod.GET)
+    public String spittles(Model model) {
+        model.addAttribute(spittleRepository.findSpittles(Long.MAX_VALUE,20));     // 将spittle添加到视图
+        return "spittles";                                                          // 返回视图名
+    }
+}
+```
+我们可以看到SpittleController有一个构造器，这个构造器使用@Autowired注解，用来注入SpittleRepository。这个SpittleRepository随后又在spittls()方法中，用来获取最新的spittle列表。
+
+需要注意的是我们在spittles()方法中给定了一个Model作为参数。这样，spittles()方法就可以将Repository中获取到的Spittle列表填充到模型中，Model实际上就是一个Map(也就是key-value的集合)它会传递给视图，这样数据就能渲染到客户端了。当调用addAttribute()方法并且指定key的时候，那么key会根据值的对象类型来推断确定。
+
+sittles()方法最后一件事是返回spittles作为视图的名字，这个视图会渲染模型。
+
+
+如果你希望显示模型的key的话，也可以指定，
+```java
+@RequestMapping(method = RequestMethod.GET)
+public String spittles(Model model) {
+    model.addAttribute("spittleList",
+        spittleRepository.findSpittles(Long.MAX_VALUE,20));     // 将spittle添加到视图
+    return "spittles";                                          // 返回视图名
+}
+```
+
+如果你希望使用非Spring类型的话，那么可以使用java.util.Map来代替Model
+```java
+@RequestMapping(method = RequestMethod.GET)
+public String spittles(Map model) {
+    model.addAttribute("spittleList",
+        spittleRepository.findSpittles(Long.MAX_VALUE,20));     // 将spittle添加到视图
+    return "spittles";                                          // 返回视图名
+}
+```
+
+既然我们现在提到了各种可替代方案，那下面还有另外一种方式来编写spittles()方法
+
+```java
+@RequestMapping(method = RequestMethod.GET)
+public List<String> spittles() {
+  return spittleRepository.findSpittles(Long.MAX_VALUE,20));
+}
+```
+这个并没有返回值，也没有显示的设定模型，这个方法返回的是Spittle列表。。当处理器方法像这样返回对象或集合时，这个值会放到模型中，模型的key会根据其类型推断得出。在本示例中也就是(spittleList)
+
+逻辑视图的名称也会根据请求的路径推断得出。因为这个方法处理针对“/spittles”的GET请求，因此视图的名称将会是spittles，（去掉开头的线。）
+
+不管使用哪种方式来编写spittles()方法，所达成的结果都是相同的。模型会存储一个Spittle列表，ket为spittleList，然后这个列表会发送到名为spittles的视图中。视图的jsp会是“/WEB-INF/views/spittles.jsp”
+
+现在数据已经放到了模型中，在JSP中该如何访问它呢？实际上，当视图是JSP的时候，模型数据会作为请求属性放入到请求之中(Request) ,因此在spittles.jsp文件中可以使用JSTL(JavaServer Pages Standard Tag Library) 的<c:forEach>标签渲染spittle列表。
+
+```xml
+<c:forEach items="${spittleList}" var="spittle" >
+  <li id="spittle_<c:out value="spittle.id"/>">
+    <div class="spittleMessage"><c:out value="${spittle.message}" /></div>
+    <div>
+      <span class="spittleTime"><c:out value="${spittle.time}" /></span>
+      <span class="spittleLocation">(<c:out value="${spittle.latitude}" />, <c:out value="${spittle.longitude}" />)</span>
+    </div>
+  </li>
+</c:forEach>
+```
+
+尽管SpittleController很简单，但是它依然比homeController更进一步，不过，SpittleController和HomeController都没有处理任何形式的输入。现在，让我们扩展SpittleContorller，让它从客户端接受一些输入。
+
+## 5.3 接受请求的输入
+
+待续。。。  早安。。。。
