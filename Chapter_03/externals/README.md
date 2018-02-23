@@ -162,7 +162,45 @@ public static propertyplaceholderConfigurer placeholderConfigurer() {
 
 **解析外部属性能够将值的处理推迟到运行时，但是它的关注点在于根据名称解析来自于Spring Environment和属性源的属性。而Spring表达式语言提供了一种更为通用的方式在运行时计算所要注入的值。**
 
+### 3.5.2 使用Spring表达式语言进行装配
 
+Spring 3引入了Spring表达式语言(SpringExpression Langguage SpEL),它能够以一种强大和简洁的方式将值装配到bean的属性和构造器参数中，在这个过程中所使用的表达式会在运行时计算到值。。
+
+SpEL拥有的特性：
+- 使用bean的ID来引用bean
+- 调用方法和访问对象的属性
+- 对值进行算术、关系、逻辑运算
+- 正则表达式匹配
+- 集合操作
+
+SpEL表达式要放要`#{...}`之中这与属性占位符有些类似，属性占位符需要放到${...}之中
+
+```xml
+#{T(System).currentTimeMillis()}    //计算表达式的那一刻当前时间的毫秒值。
+
+#{systemProperties['disc.title']}   //引用其他bean和其他bean的属性
+
+#{3.141519}                         //表示浮点值
+
+#{artistSelector.selectArtist()}    //除了引用bean，还可以调用方法
+
+如果要在SpEL中访问类的作用域的方法和常量，需要依赖T()这个关键运算符。
+
+```
+
+在动态注入值到Spring bean时，SpEL是一种很遍历和强大的方式。
+
+## 3.6 小节
+
+1、学习了Spring profile，解决了Spring bean 要跨各种部署环境的通用问题。Profile bean 是在运行时条件化创建bean的一种方式，但在Spring4中提供了@Conditional注解和SpringCondition接口的实现。
+
+2、解决两种自动装配歧义的方法，首选bean以及限定符。
+
+3、Spring嫩那个狗让bean以单例，原型、会话、请求作用域的方式来创建。
+
+4、简单的学习了SpEl，它能够在运行时计算要注入的bean属性的值。
+
+依赖注入能够将组件以及协作的其他组件解耦，AOP有利于将应用组件与跨多个组件的任务进行解耦。
 
 
 
